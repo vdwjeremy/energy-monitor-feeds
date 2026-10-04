@@ -101,18 +101,24 @@ Les collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le mêm
 
 ## Installation locale
 
-Prérequis : Python 3.9 ou plus récent, `pip` et un broker MQTT accessible. Depuis la racine du dépôt :
+Prérequis : Python 3.9 ou plus récent, `pip` et un broker MQTT accessible. Refoss demande Python 3.11 ou plus récent. Depuis la racine du dépôt :
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e .
 cp config/config.example.toml config/config.toml
 ```
 
-Modifier `config/config.toml` pour renseigner l'hôte et le port du broker ainsi que les options des collectors à utiliser. Pour un broker avec authentification, définir `username_env = "MQTT_USERNAME"` et `password_env = "MQTT_PASSWORD"` dans la section `[mqtt]`, puis exporter ces variables avant le lancement. Ne pas inscrire leurs valeurs dans le fichier TOML ni dans Git. Pour démarrer les deux collectors localement, ouvrir un terminal par collector et lancer les deux commandes de leurs sections respectives.
+Renseigner le broker et les options souhaitées dans `config/config.toml`. Pour un broker authentifié, définir les noms `username_env` et `password_env` dans `[mqtt]`, puis exporter les variables correspondantes avant le lancement. Garder leurs valeurs hors du TOML et de Git.
 
-Les erreurs de collecte ou de publication sont journalisées; la boucle continue au cycle suivant. Arrêter avec `Ctrl+C`.
+Chaque collector tourne dans son propre processus. Exemple :
+
+```bash
+energy-feed weather_api --config config/config.toml
+```
+
+Remplacer `weather_api` par `refoss_em06`, `ds18b20` ou `yf_b10` pour lancer un autre collector, dans un autre terminal si nécessaire. Pour les tests, installer plutôt `python -m pip install -e '.[dev]'`. Les erreurs de collecte ou de publication sont journalisées; la boucle continue au cycle suivant. Arrêter avec `Ctrl+C`.
 
 ## Tester la réception MQTT
 
@@ -131,49 +137,30 @@ Si rien n'arrive, vérifier l'accessibilité réseau du broker, ses identifiants
 
 ## Déploiement sur Raspberry Pi
 
-Les commandes suivantes installent le dépôt depuis GitHub dans `/opt/energy-monitor-feeds`. Remplacer `<URL_DU_DEPOT>` par l'URL Git du dépôt. Pour faire fonctionner Refoss, utiliser Python 3.11 ou plus récent; la météo, le DS18B20 et le YF-B10 acceptent Python 3.9+.
+Prérequis : Raspberry Pi OS, Python 3.9 ou plus récent (3.11+ pour Refoss), un broker MQTT accessible et un dépôt cloné dans `/opt/energy-monitor-feeds`. Installer les outils nécessaires et cloner le dépôt :
 
 ```bash
 sudo apt update
 sudo apt install -y git python3 python3-venv
-sudo adduser --system --group --no-create-home energy-feed
 sudo git clone <URL_DU_DEPOT> /opt/energy-monitor-feeds
-sudo python3 -m venv /opt/energy-monitor-feeds/.venv
-sudo /opt/energy-monitor-feeds/.venv/bin/pip install /opt/energy-monitor-feeds
-sudo install -d -o root -g energy-feed -m 0750 /etc/energy-monitor-feeds
-sudo install -o root -g energy-feed -m 0640 \
-  /opt/energy-monitor-feeds/config/config.example.toml \
-  /etc/energy-monitor-feeds/config.toml
 ```
 
-Modifier `/etc/energy-monitor-feeds/config.toml` pour le broker et les collectors à utiliser : `weather_api`, `refoss_em06`, `ds18b20` et/ou `yf_b10`. Utiliser `sudoedit /etc/energy-monitor-feeds/config.toml`. Si le broker exige une authentification, définir les noms des variables dans `[mqtt]`, puis créer et protéger le fichier d'environnement :
+L'installateur crée le compte de service, l'environnement virtuel, la configuration initiale et l'unité systemd. Sans argument, il ne démarre aucun collector :
 
 ```bash
-sudo install -o root -g energy-feed -m 0640 /dev/null \
-  /etc/energy-monitor-feeds/energy-feed.env
-sudoedit /etc/energy-monitor-feeds/energy-feed.env
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh
 ```
 
-Y placer les définitions `MQTT_USERNAME=...` et `MQTT_PASSWORD=...` si elles sont configurées; ne pas les ajouter à Git. Installer le service systemd fourni par le dépôt :
+Modifier `/etc/energy-monitor-feeds/config.toml` avec `sudoedit` pour renseigner le broker et les sections des collectors. Si le broker utilise des identifiants, définir leurs noms de variables dans `[mqtt]`, puis ajouter leurs valeurs à `/etc/energy-monitor-feeds/energy-feed.env` avec `sudoedit`. Ce fichier est protégé et n'est jamais remplacé lors d'une réinstallation.
+
+Après avoir configuré et vérifié le matériel, relancer l'installateur avec les seuls collectors à activer. Exemple :
 
 ```bash
-sudo install -o root -g root -m 0644 \
-  /opt/energy-monitor-feeds/deploy/systemd/energy-feed@.service \
-  /etc/systemd/system/energy-feed@.service
-sudo systemctl daemon-reload
-```
-
-Activer chaque collector souhaité; leurs services peuvent fonctionner en parallèle :
-
-```bash
-sudo systemctl enable --now energy-feed@weather_api
-sudo systemctl enable --now energy-feed@refoss_em06
-sudo systemctl enable --now energy-feed@ds18b20
-sudo systemctl enable --now energy-feed@yf_b10
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20
 sudo journalctl -u energy-feed@weather_api -f
 ```
 
-Avant leur démarrage, activer 1-Wire pour le DS18B20, vérifier que le compteur Refoss est accessible localement et renseigner son `device_uuid` si plusieurs EM06 sont présents. Pour le YF-B10, ajouter d'abord `energy-feed` au groupe `gpio` comme indiqué dans sa section. Les services redémarrent après une sortie en erreur et journalisent dans `journald`; ils tournent sous le compte `energy-feed`. Pour consulter un journal, remplacer le nom dans `sudo journalctl -u energy-feed@yf_b10 -f`.
+Les noms acceptés sont `weather_api`, `refoss_em06`, `ds18b20` et `yf_b10`; seuls les services nommés sont activés et démarrés. Avant cela, activer 1-Wire pour le DS18B20, vérifier l'accès réseau au Refoss, ou ajouter manuellement `energy-feed` au groupe `gpio` pour le YF-B10. Les services tournent sous le compte `energy-feed`, redémarrent après une erreur et journalisent dans `journald`.
 
 ## Mise à jour sur Raspberry Pi
 
