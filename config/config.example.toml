@@ -24,6 +24,11 @@ key = "temperature_c"
 interval_seconds = 300
 request_timeout_seconds = 15
 
+[collectors.ds18b20]
+devices_path = "/sys/bus/w1/devices"
+node = "ds18b20"
+interval_seconds = 30
+
 [collectors.refoss_em06]
 # Leave empty when there is only one EM06 on the local network.
 device_uuid = ""

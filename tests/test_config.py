@@ -77,3 +77,21 @@ def test_load_config_reads_optional_refoss_settings(tmp_path: Path) -> None:
     assert config.refoss_em06 is not None
     assert config.refoss_em06.device_uuid == "em06-uuid"
     assert config.refoss_em06.discovery_timeout_seconds == 5
+
+
+def test_load_config_reads_optional_ds18b20_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[collectors.ds18b20]\ndevices_path = "/tmp/w1/devices"\n'
+        + 'node = "temperatures"\ninterval_seconds = 15\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.ds18b20 is not None
+    assert config.ds18b20.devices_path == Path("/tmp/w1/devices")
+    assert config.ds18b20.node == "temperatures"
+    assert config.ds18b20.interval_seconds == 15

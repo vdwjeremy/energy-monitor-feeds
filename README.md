@@ -48,9 +48,32 @@ Lancer le collector :
 energy-feed refoss_em06 --config config/config.toml
 ```
 
+### Températures DS18B20 `ds18b20`
+
+Le collector lit tous les fichiers `temperature` des répertoires `28-*` sous `/sys/bus/w1/devices`. Le noyau expose la valeur en millièmes de degré Celsius; elle est convertie en °C. Chaque capteur est publié dans un topic dédié, identifié par son adresse 1-Wire :
+
+```text
+emon/ds18b20/28-000000000001_temperature_c    21.562
+emon/ds18b20/28-000000000002_temperature_c    19.75
+```
+
+La section `[collectors.ds18b20]` de `config/config.toml` permet de régler le répertoire, le nœud MQTT et l'intervalle de lecture. Les valeurs par défaut sont `/sys/bus/w1/devices`, `ds18b20` et 30 secondes. Lancer le collector avec :
+
+```bash
+energy-feed ds18b20 --config config/config.toml
+```
+
+Observer tous les capteurs avec `mosquitto_sub` :
+
+```bash
+mosquitto_sub -h <hote_du_broker> -p 1883 -v -t 'emon/ds18b20/#'
+```
+
+Sur Raspberry Pi OS, activer l'interface 1-Wire avec `sudo raspi-config` (Interface Options > 1-Wire), ou ajouter `dtoverlay=w1-gpio` au fichier de configuration du démarrage (`/boot/firmware/config.txt` sur les versions récentes, parfois `/boot/config.txt`), puis redémarrer. Câbler le DS18B20 sur le GPIO configuré (GPIO 4 par défaut) avec une résistance pull-up de 4,7 kΩ entre DATA et 3,3 V. Vérifier que les capteurs apparaissent avec `ls /sys/bus/w1/devices/28-*`. Le service systemd `energy-feed@ds18b20` peut ensuite être activé comme les deux autres collectors.
+
 ### Configuration et topics MQTT
 
-Les deux collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le même format EmonCMS `emon/<node>/<key>`. Leurs nœuds par défaut sont `weather_opio` et `refoss_em06`. Les topics Refoss contiennent également le numéro du canal et l'unité de la mesure. Chaque payload est numérique. Configurer l'hôte et le port du broker dans `[mqtt]`; les identifiants sont fournis par variables d'environnement, jamais inscrits dans le TOML.
+Les collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le même format EmonCMS `emon/<node>/<key>`. Leurs nœuds par défaut sont `weather_opio`, `refoss_em06` et `ds18b20`. Les topics Refoss incluent le canal, ceux du DS18B20 l'adresse 1-Wire. Chaque payload est numérique. Configurer l'hôte et le port du broker dans `[mqtt]`; les identifiants sont fournis par variables d'environnement, jamais inscrits dans le TOML.
 
 ## Installation locale
 
@@ -84,7 +107,7 @@ Si rien n'arrive, vérifier l'accessibilité réseau du broker, ses identifiants
 
 ## Déploiement sur Raspberry Pi
 
-Les commandes suivantes installent le dépôt depuis GitHub dans `/opt/energy-monitor-feeds`. Remplacer `<URL_DU_DEPOT>` par l'URL Git du dépôt. Pour faire fonctionner les deux collectors, utiliser Python 3.11 ou plus récent; la météo seule accepte Python 3.9+.
+Les commandes suivantes installent le dépôt depuis GitHub dans `/opt/energy-monitor-feeds`. Remplacer `<URL_DU_DEPOT>` par l'URL Git du dépôt. Pour faire fonctionner Refoss, utiliser Python 3.11 ou plus récent; la météo et le DS18B20 acceptent Python 3.9+.
 
 ```bash
 sudo apt update
@@ -99,7 +122,7 @@ sudo install -o root -g energy-feed -m 0640 \
   /etc/energy-monitor-feeds/config.toml
 ```
 
-Modifier `/etc/energy-monitor-feeds/config.toml` pour le broker et les collectors à utiliser : `weather_api` et/ou `refoss_em06`. Utiliser `sudoedit /etc/energy-monitor-feeds/config.toml`. Si le broker exige une authentification, définir les noms des variables dans `[mqtt]`, puis créer et protéger le fichier d'environnement :
+Modifier `/etc/energy-monitor-feeds/config.toml` pour le broker et les collectors à utiliser : `weather_api`, `refoss_em06` et/ou `ds18b20`. Utiliser `sudoedit /etc/energy-monitor-feeds/config.toml`. Si le broker exige une authentification, définir les noms des variables dans `[mqtt]`, puis créer et protéger le fichier d'environnement :
 
 ```bash
 sudo install -o root -g energy-feed -m 0640 /dev/null \
@@ -116,15 +139,16 @@ sudo install -o root -g root -m 0644 \
 sudo systemctl daemon-reload
 ```
 
-Activer chaque collector souhaité; les deux services peuvent fonctionner en parallèle :
+Activer chaque collector souhaité; leurs services peuvent fonctionner en parallèle :
 
 ```bash
 sudo systemctl enable --now energy-feed@weather_api
 sudo systemctl enable --now energy-feed@refoss_em06
+sudo systemctl enable --now energy-feed@ds18b20
 sudo journalctl -u energy-feed@weather_api -f
 ```
 
-Pour consulter les logs EM06, remplacer `weather_api` par `refoss_em06` dans la commande `journalctl`. Avant son démarrage, vérifier que le compteur est accessible sur le réseau local et renseigner `device_uuid` si plusieurs EM06 sont présents. Le service redémarre après une sortie en erreur et journalise dans `journald`; il tourne sous le compte `energy-feed`.
+Avant leur démarrage, activer 1-Wire pour le DS18B20 et vérifier que le compteur Refoss est accessible localement; renseigner son `device_uuid` si plusieurs EM06 sont présents. Les services redémarrent après une sortie en erreur et journalisent dans `journald`; ils tournent sous le compte `energy-feed`. Pour consulter un journal, remplacer le nom dans `sudo journalctl -u energy-feed@ds18b20 -f`.
 
 ## Mise à jour sur Raspberry Pi
 
@@ -137,14 +161,14 @@ sudo install -o root -g root -m 0644 \
   /opt/energy-monitor-feeds/deploy/systemd/energy-feed@.service \
   /etc/systemd/system/energy-feed@.service
 sudo systemctl daemon-reload
-sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06
+sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20
 ```
 
-`try-restart` redémarre uniquement les collectors déjà actifs. Retirer de la commande les unités que l'on ne souhaite pas mettre à jour/redémarrer. Vérifier ensuite leur état avec `systemctl status energy-feed@weather_api` ou `systemctl status energy-feed@refoss_em06`, et consulter les journaux avec `journalctl -u <unite> -f`. L'option `--ff-only` évite de fusionner automatiquement des modifications locales; en cas de refus, examiner les changements du dépôt avant de poursuivre.
+`try-restart` redémarre uniquement les collectors déjà actifs. Retirer de la commande les unités que l'on ne souhaite pas mettre à jour/redémarrer. Vérifier ensuite leur état avec `systemctl status energy-feed@ds18b20` (ou remplacer par un autre nom de collector), et consulter les journaux avec `journalctl -u <unite> -f`. L'option `--ff-only` évite de fusionner automatiquement des modifications locales; en cas de refus, examiner les changements du dépôt avant de poursuivre.
 
 ## Ajouter un collecteur
 
-Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api` et `refoss_em06` sont exécutables.
+Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api`, `refoss_em06` et `ds18b20` sont exécutables.
 
 ## Sécurité
 

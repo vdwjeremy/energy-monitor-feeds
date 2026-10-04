@@ -50,7 +50,9 @@ Le collecteur `weather_api` demande `current=temperature_2m` à l'API Open-Meteo
 
 Le collecteur `refoss_em06` utilise `refoss-ha` pour la découverte Refoss par broadcast sur le réseau local et la lecture des canaux EM06. Cette bibliothèque Home Assistant ne donne pas accès au cloud Refoss; l'appareil doit être joignable localement. Ses métriques numériques sont normalisées en W, V, A et Wh et publiées une par topic MQTT, toutes les 30 secondes par défaut. Ce collector nécessite Python 3.11 ou plus récent.
 
-Les deux collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api` ou `energy-feed refoss_em06`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
+Le collecteur `ds18b20` lit les fichiers `temperature` des répertoires `28-*` dans `/sys/bus/w1/devices`. Il convertit les millièmes de degré Celsius en °C et publie une mesure par adresse 1-Wire, toutes les 30 secondes par défaut. Il ne nécessite pas de dépendance Python externe; le noyau Linux doit exposer le bus 1-Wire.
+
+Les collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api`, `energy-feed refoss_em06` ou `energy-feed ds18b20`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
 
 ## Flux de données
 

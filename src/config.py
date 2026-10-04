@@ -46,10 +46,18 @@ class RefossEm06Config:
 
 
 @dataclass(frozen=True)
+class Ds18b20Config:
+    devices_path: Path
+    node: str
+    interval_seconds: float
+
+
+@dataclass(frozen=True)
 class AppConfig:
     mqtt: MqttConfig
     weather_api: WeatherConfig
     refoss_em06: Optional[RefossEm06Config] = None
+    ds18b20: Optional[Ds18b20Config] = None
 
 
 def _section(data: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -99,6 +107,18 @@ def _refoss_em06_config(section: Dict[str, Any]) -> RefossEm06Config:
     )
 
 
+def _ds18b20_config(section: Dict[str, Any]) -> Ds18b20Config:
+    devices_path = section.get("devices_path", "/sys/bus/w1/devices")
+    if not isinstance(devices_path, str) or not devices_path.strip():
+        raise ValueError("collectors.ds18b20.devices_path must be a non-empty path")
+
+    return Ds18b20Config(
+        devices_path=Path(devices_path).expanduser(),
+        node=_non_empty_string(section, "node"),
+        interval_seconds=_positive_number(section, "interval_seconds"),
+    )
+
+
 def load_config(path: Path) -> AppConfig:
     """Read TOML settings and validate values needed by the weather daemon."""
     with Path(path).open("rb") as config_file:
@@ -110,6 +130,9 @@ def load_config(path: Path) -> AppConfig:
     refoss_data = collectors_data.get("refoss_em06")
     if refoss_data is not None and not isinstance(refoss_data, dict):
         raise ValueError("Missing or invalid configuration section: [collectors.refoss_em06]")
+    ds18b20_data = collectors_data.get("ds18b20")
+    if ds18b20_data is not None and not isinstance(ds18b20_data, dict):
+        raise ValueError("Missing or invalid configuration section: [collectors.ds18b20]")
 
     host = mqtt_data.get("host")
     if not isinstance(host, str) or not host.strip():
@@ -165,4 +188,5 @@ def load_config(path: Path) -> AppConfig:
         ),
         weather_api=weather_config,
         refoss_em06=_refoss_em06_config(refoss_data) if refoss_data is not None else None,
+        ds18b20=_ds18b20_config(ds18b20_data) if ds18b20_data is not None else None,
     )
