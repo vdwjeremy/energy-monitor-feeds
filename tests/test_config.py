@@ -60,3 +60,20 @@ def test_load_config_rejects_infinite_collection_interval(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="interval_seconds"):
         load_config(config_path)
+
+
+def test_load_config_reads_optional_refoss_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[collectors.refoss_em06]\ndevice_uuid = "em06-uuid"\nnode = "refoss_em06"\n'
+        + "interval_seconds = 30\ndiscovery_timeout_seconds = 5\nrequest_timeout_seconds = 10\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.refoss_em06 is not None
+    assert config.refoss_em06.device_uuid == "em06-uuid"
+    assert config.refoss_em06.discovery_timeout_seconds == 5

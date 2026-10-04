@@ -4,7 +4,7 @@
 
 Ce dépôt héberge des démons Python qui collectent des mesures depuis des API web et des capteurs locaux, puis les publient sur le broker MQTT consommé par OpenEnergyMonitor (EmonCMS). La cible est un Raspberry Pi 3 sous Linux : les processus doivent rester légers, redémarrer proprement après une panne et fonctionner sans privilèges élevés.
 
-Le premier collecteur implémenté interroge Open-Meteo pour la température actuelle à Opio, France. Les autres collecteurs pourront être ajoutés sans modifier le cycle MQTT commun.
+Les collecteurs implémentés interrogent Open-Meteo pour la température actuelle à Opio, France, et lisent les mesures du Refoss EM06 sur le réseau local via `refoss_ha`. Les autres collecteurs pourront être ajoutés sans modifier le cycle MQTT commun.
 
 ## Décisions structurantes
 
@@ -35,6 +35,7 @@ energy-monitor-feeds/
 │   ├── mqtt.py
 │   └── collectors/
 │       ├── __init__.py
+│       ├── refoss_em06.py
 │       ├── weather_api.py
 │       └── local_sensors.py (squelette)
 └── tests/
@@ -45,7 +46,11 @@ energy-monitor-feeds/
 
 Les collecteurs implémentent une interface simple : lire une ou plusieurs mesures, les valider, puis les remettre au module de publication. Le module commun ne connaît pas les détails des API ou des pilotes de capteurs.
 
-Le collecteur `weather_api` demande `current=temperature_2m` à l'API Open-Meteo pour Opio (`43.66862, 6.98212`, `Europe/Paris`), sans clé API. Il publie la mesure sous le nœud `weather_opio` et l'entrée `temperature_c`. `local_sensors.py` est un squelette; aucun capteur ni pilote local n'est encore configuré.
+Le collecteur `weather_api` demande `current=temperature_2m` à l'API Open-Meteo pour Opio (`43.66862, 6.98212`, `Europe/Paris`), sans clé API. Il publie la mesure sous le nœud `weather_opio` et l'entrée `temperature_c`, en degrés Celsius, toutes les 300 secondes par défaut. Il nécessite Python 3.9 ou plus récent.
+
+Le collecteur `refoss_em06` utilise `refoss-ha` pour la découverte Refoss par broadcast sur le réseau local et la lecture des canaux EM06. Cette bibliothèque Home Assistant ne donne pas accès au cloud Refoss; l'appareil doit être joignable localement. Ses métriques numériques sont normalisées en W, V, A et Wh et publiées une par topic MQTT, toutes les 30 secondes par défaut. Ce collector nécessite Python 3.11 ou plus récent.
+
+Les deux collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api` ou `energy-feed refoss_em06`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
 
 ## Flux de données
 

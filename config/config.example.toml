@@ -23,3 +23,11 @@ node = "weather_opio"
 key = "temperature_c"
 interval_seconds = 300
 request_timeout_seconds = 15
+
+[collectors.refoss_em06]
+# Leave empty when there is only one EM06 on the local network.
+device_uuid = ""
+node = "refoss_em06"
+interval_seconds = 30
+discovery_timeout_seconds = 5
+request_timeout_seconds = 15

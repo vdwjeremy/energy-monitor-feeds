@@ -37,9 +37,19 @@ class WeatherConfig:
 
 
 @dataclass(frozen=True)
+class RefossEm06Config:
+    device_uuid: Optional[str]
+    node: str
+    interval_seconds: float
+    discovery_timeout_seconds: float
+    request_timeout_seconds: float
+
+
+@dataclass(frozen=True)
 class AppConfig:
     mqtt: MqttConfig
     weather_api: WeatherConfig
+    refoss_em06: Optional[RefossEm06Config] = None
 
 
 def _section(data: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -75,13 +85,31 @@ def _non_empty_string(section: Dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def _refoss_em06_config(section: Dict[str, Any]) -> RefossEm06Config:
+    device_uuid = section.get("device_uuid", "")
+    if not isinstance(device_uuid, str):
+        raise ValueError("collectors.refoss_em06.device_uuid must be a string")
+
+    return RefossEm06Config(
+        device_uuid=device_uuid.strip() or None,
+        node=_non_empty_string(section, "node"),
+        interval_seconds=_positive_number(section, "interval_seconds"),
+        discovery_timeout_seconds=_positive_number(section, "discovery_timeout_seconds"),
+        request_timeout_seconds=_positive_number(section, "request_timeout_seconds"),
+    )
+
+
 def load_config(path: Path) -> AppConfig:
     """Read TOML settings and validate values needed by the weather daemon."""
     with Path(path).open("rb") as config_file:
         data = tomllib.load(config_file)
 
     mqtt_data = _section(data, "mqtt")
-    weather_data = _section(_section(data, "collectors"), "weather_api")
+    collectors_data = _section(data, "collectors")
+    weather_data = _section(collectors_data, "weather_api")
+    refoss_data = collectors_data.get("refoss_em06")
+    if refoss_data is not None and not isinstance(refoss_data, dict):
+        raise ValueError("Missing or invalid configuration section: [collectors.refoss_em06]")
 
     host = mqtt_data.get("host")
     if not isinstance(host, str) or not host.strip():
@@ -136,4 +164,5 @@ def load_config(path: Path) -> AppConfig:
             password_env=password_env,
         ),
         weather_api=weather_config,
+        refoss_em06=_refoss_em06_config(refoss_data) if refoss_data is not None else None,
     )
