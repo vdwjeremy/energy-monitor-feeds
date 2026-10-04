@@ -95,3 +95,35 @@ def test_load_config_reads_optional_ds18b20_settings(tmp_path: Path) -> None:
     assert config.ds18b20.devices_path == Path("/tmp/w1/devices")
     assert config.ds18b20.node == "temperatures"
     assert config.ds18b20.interval_seconds == 15
+
+
+def test_load_config_reads_optional_yf_b10_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[collectors.yf_b10]\ngpio_pin = 21\nnode = "water_flow"\n'
+        + "interval_seconds = 5\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.yf_b10 is not None
+    assert config.yf_b10.gpio_pin == 21
+    assert config.yf_b10.node == "water_flow"
+
+
+@pytest.mark.parametrize("gpio_value", ["-1", "28", "true", '"16"'])
+def test_load_config_rejects_invalid_yf_b10_gpio_pin(tmp_path: Path, gpio_value: str) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + "\n[collectors.yf_b10]\ngpio_pin = {}\nnode = \"water_flow\"\n"
+        "interval_seconds = 5\n".format(gpio_value),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="gpio_pin"):
+        load_config(config_path)

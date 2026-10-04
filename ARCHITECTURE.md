@@ -52,7 +52,9 @@ Le collecteur `refoss_em06` utilise `refoss-ha` pour la découverte Refoss par b
 
 Le collecteur `ds18b20` lit les fichiers `temperature` des répertoires `28-*` dans `/sys/bus/w1/devices`. Il convertit les millièmes de degré Celsius en °C et publie une mesure par adresse 1-Wire, toutes les 30 secondes par défaut. Il ne nécessite pas de dépendance Python externe; le noyau Linux doit exposer le bus 1-Wire.
 
-Les collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api`, `energy-feed refoss_em06` ou `energy-feed ds18b20`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
+Le collecteur `yf_b10` compte les impulsions du débitmètre sur une entrée GPIO configurable (BCM 16 par défaut). Il publie séparément la fréquence en Hz et le débit en L/min estimé depuis $Q=(F+4)/8$, avec la tolérance nominale de ±5 % du capteur. La fenêtre de comptage est de 10 secondes par défaut. Il utilise `gpiozero` et son compte système doit avoir accès au GPIO.
+
+Les collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api`, `energy-feed refoss_em06`, `energy-feed ds18b20` ou `energy-feed yf_b10`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
 
 ## Flux de données
 

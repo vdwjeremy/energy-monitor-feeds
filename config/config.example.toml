@@ -29,6 +29,11 @@ devices_path = "/sys/bus/w1/devices"
 node = "ds18b20"
 interval_seconds = 30
 
+[collectors.yf_b10]
+gpio_pin = 16
+node = "yf_b10"
+interval_seconds = 10
+
 [collectors.refoss_em06]
 # Leave empty when there is only one EM06 on the local network.
 device_uuid = ""

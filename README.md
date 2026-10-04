@@ -71,9 +71,33 @@ mosquitto_sub -h <hote_du_broker> -p 1883 -v -t 'emon/ds18b20/#'
 
 Sur Raspberry Pi OS, activer l'interface 1-Wire avec `sudo raspi-config` (Interface Options > 1-Wire), ou ajouter `dtoverlay=w1-gpio` au fichier de configuration du démarrage (`/boot/firmware/config.txt` sur les versions récentes, parfois `/boot/config.txt`), puis redémarrer. Câbler le DS18B20 sur le GPIO configuré (GPIO 4 par défaut) avec une résistance pull-up de 4,7 kΩ entre DATA et 3,3 V. Vérifier que les capteurs apparaissent avec `ls /sys/bus/w1/devices/28-*`. Le service systemd `energy-feed@ds18b20` peut ensuite être activé comme les deux autres collectors.
 
+### Débitmètre YF-B10 `yf_b10`
+
+Le collector compte les fronts actifs du signal du YF-B10 pendant une fenêtre d'échantillonnage. Il calcule la fréquence $F$ en Hz puis le débit $Q$ en L/min avec $Q=(F+4)/8$, d'après la caractéristique $F=(8\times Q-4)\pm5\%$. La fenêtre est configurable et vaut 10 secondes par défaut. Deux topics distincts sont publiés :
+
+```text
+emon/yf_b10/frequency_hz    4.4
+emon/yf_b10/flow_l_min      1.05
+```
+
+Configurer `[collectors.yf_b10]` dans `config/config.toml`. `gpio_pin` est le numéro BCM du GPIO (16 par défaut, broche physique 36); le nœud MQTT vaut `yf_b10` par défaut. Lancer le collector avec :
+
+```bash
+energy-feed yf_b10 --config config/config.toml
+```
+
+Installer `gpiozero` avec le paquet du projet. Pour que le service systemd puisse accéder au GPIO, ajouter son compte au groupe `gpio`, puis redémarrer le service :
+
+```bash
+sudo usermod -aG gpio energy-feed
+sudo systemctl restart energy-feed@yf_b10
+```
+
+Respecter le brochage et la tension d'alimentation du modèle exact du débitmètre. Ne jamais appliquer 5 V au GPIO Raspberry Pi : son entrée n'est pas tolérante au 5 V. Le signal doit être limité à 3,3 V; utiliser une adaptation de niveau si la sortie n'est pas une sortie collecteur ouvert tirée vers 3,3 V. Relier les masses du capteur et du Raspberry Pi.
+
 ### Configuration et topics MQTT
 
-Les collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le même format EmonCMS `emon/<node>/<key>`. Leurs nœuds par défaut sont `weather_opio`, `refoss_em06` et `ds18b20`. Les topics Refoss incluent le canal, ceux du DS18B20 l'adresse 1-Wire. Chaque payload est numérique. Configurer l'hôte et le port du broker dans `[mqtt]`; les identifiants sont fournis par variables d'environnement, jamais inscrits dans le TOML.
+Les collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le même format EmonCMS `emon/<node>/<key>`. Leurs nœuds par défaut sont `weather_opio`, `refoss_em06`, `ds18b20` et `yf_b10`. Les topics Refoss incluent le canal, ceux du DS18B20 l'adresse 1-Wire; le YF-B10 sépare fréquence et débit. Chaque payload est numérique. Configurer l'hôte et le port du broker dans `[mqtt]`; les identifiants sont fournis par variables d'environnement, jamais inscrits dans le TOML.
 
 ## Installation locale
 
@@ -107,7 +131,7 @@ Si rien n'arrive, vérifier l'accessibilité réseau du broker, ses identifiants
 
 ## Déploiement sur Raspberry Pi
 
-Les commandes suivantes installent le dépôt depuis GitHub dans `/opt/energy-monitor-feeds`. Remplacer `<URL_DU_DEPOT>` par l'URL Git du dépôt. Pour faire fonctionner Refoss, utiliser Python 3.11 ou plus récent; la météo et le DS18B20 acceptent Python 3.9+.
+Les commandes suivantes installent le dépôt depuis GitHub dans `/opt/energy-monitor-feeds`. Remplacer `<URL_DU_DEPOT>` par l'URL Git du dépôt. Pour faire fonctionner Refoss, utiliser Python 3.11 ou plus récent; la météo, le DS18B20 et le YF-B10 acceptent Python 3.9+.
 
 ```bash
 sudo apt update
@@ -122,7 +146,7 @@ sudo install -o root -g energy-feed -m 0640 \
   /etc/energy-monitor-feeds/config.toml
 ```
 
-Modifier `/etc/energy-monitor-feeds/config.toml` pour le broker et les collectors à utiliser : `weather_api`, `refoss_em06` et/ou `ds18b20`. Utiliser `sudoedit /etc/energy-monitor-feeds/config.toml`. Si le broker exige une authentification, définir les noms des variables dans `[mqtt]`, puis créer et protéger le fichier d'environnement :
+Modifier `/etc/energy-monitor-feeds/config.toml` pour le broker et les collectors à utiliser : `weather_api`, `refoss_em06`, `ds18b20` et/ou `yf_b10`. Utiliser `sudoedit /etc/energy-monitor-feeds/config.toml`. Si le broker exige une authentification, définir les noms des variables dans `[mqtt]`, puis créer et protéger le fichier d'environnement :
 
 ```bash
 sudo install -o root -g energy-feed -m 0640 /dev/null \
@@ -145,10 +169,11 @@ Activer chaque collector souhaité; leurs services peuvent fonctionner en parall
 sudo systemctl enable --now energy-feed@weather_api
 sudo systemctl enable --now energy-feed@refoss_em06
 sudo systemctl enable --now energy-feed@ds18b20
+sudo systemctl enable --now energy-feed@yf_b10
 sudo journalctl -u energy-feed@weather_api -f
 ```
 
-Avant leur démarrage, activer 1-Wire pour le DS18B20 et vérifier que le compteur Refoss est accessible localement; renseigner son `device_uuid` si plusieurs EM06 sont présents. Les services redémarrent après une sortie en erreur et journalisent dans `journald`; ils tournent sous le compte `energy-feed`. Pour consulter un journal, remplacer le nom dans `sudo journalctl -u energy-feed@ds18b20 -f`.
+Avant leur démarrage, activer 1-Wire pour le DS18B20, vérifier que le compteur Refoss est accessible localement et renseigner son `device_uuid` si plusieurs EM06 sont présents. Pour le YF-B10, ajouter d'abord `energy-feed` au groupe `gpio` comme indiqué dans sa section. Les services redémarrent après une sortie en erreur et journalisent dans `journald`; ils tournent sous le compte `energy-feed`. Pour consulter un journal, remplacer le nom dans `sudo journalctl -u energy-feed@yf_b10 -f`.
 
 ## Mise à jour sur Raspberry Pi
 
@@ -161,14 +186,14 @@ sudo install -o root -g root -m 0644 \
   /opt/energy-monitor-feeds/deploy/systemd/energy-feed@.service \
   /etc/systemd/system/energy-feed@.service
 sudo systemctl daemon-reload
-sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20
+sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20 energy-feed@yf_b10
 ```
 
-`try-restart` redémarre uniquement les collectors déjà actifs. Retirer de la commande les unités que l'on ne souhaite pas mettre à jour/redémarrer. Vérifier ensuite leur état avec `systemctl status energy-feed@ds18b20` (ou remplacer par un autre nom de collector), et consulter les journaux avec `journalctl -u <unite> -f`. L'option `--ff-only` évite de fusionner automatiquement des modifications locales; en cas de refus, examiner les changements du dépôt avant de poursuivre.
+`try-restart` redémarre uniquement les collectors déjà actifs. Retirer de la commande les unités que l'on ne souhaite pas mettre à jour/redémarrer. Vérifier ensuite leur état avec `systemctl status energy-feed@yf_b10` (ou remplacer par un autre nom de collector), et consulter les journaux avec `journalctl -u <unite> -f`. L'option `--ff-only` évite de fusionner automatiquement des modifications locales; en cas de refus, examiner les changements du dépôt avant de poursuivre.
 
 ## Ajouter un collecteur
 
-Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api`, `refoss_em06` et `ds18b20` sont exécutables.
+Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api`, `refoss_em06`, `ds18b20` et `yf_b10` sont exécutables.
 
 ## Sécurité
 

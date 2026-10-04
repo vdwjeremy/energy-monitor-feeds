@@ -53,11 +53,19 @@ class Ds18b20Config:
 
 
 @dataclass(frozen=True)
+class YfB10Config:
+    gpio_pin: int
+    node: str
+    interval_seconds: float
+
+
+@dataclass(frozen=True)
 class AppConfig:
     mqtt: MqttConfig
     weather_api: WeatherConfig
     refoss_em06: Optional[RefossEm06Config] = None
     ds18b20: Optional[Ds18b20Config] = None
+    yf_b10: Optional[YfB10Config] = None
 
 
 def _section(data: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -119,6 +127,18 @@ def _ds18b20_config(section: Dict[str, Any]) -> Ds18b20Config:
     )
 
 
+def _yf_b10_config(section: Dict[str, Any]) -> YfB10Config:
+    gpio_pin = section.get("gpio_pin", 16)
+    if isinstance(gpio_pin, bool) or not isinstance(gpio_pin, int) or not 0 <= gpio_pin <= 27:
+        raise ValueError("collectors.yf_b10.gpio_pin must be a BCM GPIO number from 0 to 27")
+
+    return YfB10Config(
+        gpio_pin=gpio_pin,
+        node=_non_empty_string(section, "node"),
+        interval_seconds=_positive_number(section, "interval_seconds"),
+    )
+
+
 def load_config(path: Path) -> AppConfig:
     """Read TOML settings and validate values needed by the weather daemon."""
     with Path(path).open("rb") as config_file:
@@ -133,6 +153,9 @@ def load_config(path: Path) -> AppConfig:
     ds18b20_data = collectors_data.get("ds18b20")
     if ds18b20_data is not None and not isinstance(ds18b20_data, dict):
         raise ValueError("Missing or invalid configuration section: [collectors.ds18b20]")
+    yf_b10_data = collectors_data.get("yf_b10")
+    if yf_b10_data is not None and not isinstance(yf_b10_data, dict):
+        raise ValueError("Missing or invalid configuration section: [collectors.yf_b10]")
 
     host = mqtt_data.get("host")
     if not isinstance(host, str) or not host.strip():
@@ -189,4 +212,5 @@ def load_config(path: Path) -> AppConfig:
         weather_api=weather_config,
         refoss_em06=_refoss_em06_config(refoss_data) if refoss_data is not None else None,
         ds18b20=_ds18b20_config(ds18b20_data) if ds18b20_data is not None else None,
+        yf_b10=_yf_b10_config(yf_b10_data) if yf_b10_data is not None else None,
     )

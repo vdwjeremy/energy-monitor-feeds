@@ -13,6 +13,7 @@ from typing import Optional, Sequence
 from collectors.weather_api import WeatherApiCollector
 from collectors.refoss_em06 import RefossEm06Collector
 from collectors.ds18b20 import Ds18b20Collector
+from collectors.yf_b10 import YfB10Collector
 from config import load_config
 from logging_config import configure_logging
 from mqtt import MqttPublisher
@@ -76,6 +77,43 @@ def _run_ds18b20(config_path: Path, stop: threading.Event) -> None:
             stop.wait(max(0.0, remaining))
 
 
+def _run_yf_b10(config_path: Path, stop: threading.Event) -> None:
+    config = load_config(config_path)
+    if config.yf_b10 is None:
+        raise ValueError("Missing [collectors.yf_b10] configuration section")
+
+    collector = YfB10Collector(config.yf_b10)
+    mqtt_config = replace(config.mqtt, client_id="{}-yf-b10".format(config.mqtt.client_id))
+    try:
+        with MqttPublisher(mqtt_config) as publisher:
+            collector.start()
+            LOGGER.info("Starting YF-B10 collector on BCM GPIO %s", config.yf_b10.gpio_pin)
+            if stop.wait(config.yf_b10.interval_seconds):
+                return
+            while not stop.is_set():
+                cycle_started = time.monotonic()
+                try:
+                    measurements = collector.collect()
+                    for measurement in measurements:
+                        try:
+                            publisher.publish(measurement)
+                            LOGGER.info(
+                                "Published %s=%s to %s",
+                                measurement.key,
+                                measurement.payload,
+                                measurement.topic(config.mqtt.basetopic),
+                            )
+                        except Exception:
+                            LOGGER.exception("Failed to publish YF-B10 metric %s", measurement.key)
+                except Exception:
+                    LOGGER.exception("YF-B10 collection failed")
+
+                remaining = config.yf_b10.interval_seconds - (time.monotonic() - cycle_started)
+                stop.wait(max(0.0, remaining))
+    finally:
+        collector.close()
+
+
 async def _run_refoss_em06(config_path: Path, stop: threading.Event) -> None:
     config = load_config(config_path)
     if config.refoss_em06 is None:
@@ -117,7 +155,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Collect and publish energy-monitor measurements")
     parser.add_argument(
         "collector",
-        choices=("weather_api", "refoss_em06", "ds18b20"),
+        choices=("weather_api", "refoss_em06", "ds18b20", "yf_b10"),
         help="collector to run",
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="path to TOML config")
@@ -132,8 +170,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _run_weather_api(args.config, stop)
         elif args.collector == "refoss_em06":
             asyncio.run(_run_refoss_em06(args.config, stop))
-        else:
+        elif args.collector == "ds18b20":
             _run_ds18b20(args.config, stop)
+        else:
+            _run_yf_b10(args.config, stop)
     except Exception:
         LOGGER.exception("Collector stopped")
         return 1
