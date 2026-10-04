@@ -1,0 +1,21 @@
+[Unit]
+Description=Energy Monitor MQTT collector (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=energy-feed
+Group=energy-feed
+WorkingDirectory=/opt/energy-monitor-feeds
+EnvironmentFile=-/etc/energy-monitor-feeds/energy-feed.env
+ExecStart=/opt/energy-monitor-feeds/.venv/bin/energy-feed %i --config /etc/energy-monitor-feeds/config.toml
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

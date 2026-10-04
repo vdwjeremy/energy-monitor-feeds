@@ -4,7 +4,7 @@
 
 Ce dépôt héberge des démons Python qui collectent des mesures depuis des API web et des capteurs locaux, puis les publient sur le broker MQTT consommé par OpenEnergyMonitor (EmonCMS). La cible est un Raspberry Pi 3 sous Linux : les processus doivent rester légers, redémarrer proprement après une panne et fonctionner sans privilèges élevés.
 
-Le dépôt étant actuellement vide, l'arborescence ci-dessous est une proposition de départ, pas la description de fichiers déjà présents.
+Le premier collecteur implémenté interroge Open-Meteo pour la température actuelle à Opio, France. Les autres collecteurs pourront être ajoutés sans modifier le cycle MQTT commun.
 
 ## Décisions structurantes
 
@@ -18,6 +18,7 @@ Le dépôt étant actuellement vide, l'arborescence ci-dessous est une propositi
 
 ```text
 energy-monitor-feeds/
+├── .gitignore
 ├── ARCHITECTURE.md
 ├── README.md
 ├── pyproject.toml
@@ -33,14 +34,18 @@ energy-monitor-feeds/
 │   ├── models.py
 │   ├── mqtt.py
 │   └── collectors/
+│       ├── __init__.py
 │       ├── weather_api.py
-│       └── local_sensors.py
+│       └── local_sensors.py (squelette)
 └── tests/
     ├── test_config.py
-    └── test_mqtt_payload.py
+    ├── test_mqtt_payload.py
+    └── test_weather_api.py
 ```
 
 Les collecteurs implémentent une interface simple : lire une ou plusieurs mesures, les valider, puis les remettre au module de publication. Le module commun ne connaît pas les détails des API ou des pilotes de capteurs.
+
+Le collecteur `weather_api` demande `current=temperature_2m` à l'API Open-Meteo pour Opio (`43.66862, 6.98212`, `Europe/Paris`), sans clé API. Il publie la mesure sous le nœud `weather_opio` et l'entrée `temperature_c`. `local_sensors.py` est un squelette; aucun capteur ni pilote local n'est encore configuré.
 
 ## Flux de données
 

@@ -1,0 +1,25 @@
+[mqtt]
+host = "127.0.0.1"
+port = 1883
+basetopic = "emon"
+client_id = "energy-feed-weather-opio"
+qos = 0
+tls = false
+connect_timeout_seconds = 15
+publish_timeout_seconds = 10
+
+# Set these to environment-variable names when the broker requires credentials.
+# For example: username_env = "MQTT_USERNAME"
+#              password_env = "MQTT_PASSWORD"
+# Keep the credentials themselves out of this file.
+# username_env = "MQTT_USERNAME"
+# password_env = "MQTT_PASSWORD"
+
+[collectors.weather_api]
+latitude = 43.66862
+longitude = 6.98212
+timezone = "Europe/Paris"
+node = "weather_opio"
+key = "temperature_c"
+interval_seconds = 300
+request_timeout_seconds = 15
