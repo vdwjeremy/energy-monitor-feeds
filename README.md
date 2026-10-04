@@ -156,7 +156,7 @@ Modifier `/etc/energy-monitor-feeds/config.toml` avec `sudoedit` pour renseigner
 Après avoir configuré et vérifié le matériel, relancer l'installateur avec les seuls collectors à activer. Exemple :
 
 ```bash
-sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10
 sudo journalctl -u energy-feed@weather_api -f
 ```
 
@@ -168,11 +168,7 @@ La configuration et les secrets restent dans `/etc/energy-monitor-feeds`; la mis
 
 ```bash
 sudo git -C /opt/energy-monitor-feeds pull --ff-only
-sudo /opt/energy-monitor-feeds/.venv/bin/pip install /opt/energy-monitor-feeds
-sudo install -o root -g root -m 0644 \
-  /opt/energy-monitor-feeds/deploy/systemd/energy-feed@.service \
-  /etc/systemd/system/energy-feed@.service
-sudo systemctl daemon-reload
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10
 sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20 energy-feed@yf_b10
 ```
 
