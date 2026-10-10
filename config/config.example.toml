@@ -27,17 +27,17 @@ request_timeout_seconds = 15
 [collectors.ds18b20]
 devices_path = "/sys/bus/w1/devices"
 node = "ds18b20"
-interval_seconds = 30
+interval_seconds = 2
 
 [collectors.yf_b10]
 gpio_pin = 16
 node = "yf_b10"
-interval_seconds = 10
+interval_seconds = 2
 
 [collectors.refoss_em06]
 # Leave empty when there is only one EM06 on the local network.
 device_uuid = ""
 node = "refoss_em06"
-interval_seconds = 30
+interval_seconds = 2
 discovery_timeout_seconds = 5
 request_timeout_seconds = 15
