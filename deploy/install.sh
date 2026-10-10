@@ -52,6 +52,7 @@ if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
 fi
 if ! getent passwd "$SERVICE_USER" >/dev/null 2>&1; then
     useradd --system --gid "$SERVICE_GROUP" --no-create-home --home-dir /nonexistent "$SERVICE_USER"
+    usermod -a -G gpio $SERVICE_USER
 fi
 
 install -d -o root -g "$SERVICE_GROUP" -m 0750 "$CONFIG_DIR"
