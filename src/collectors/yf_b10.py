@@ -44,7 +44,7 @@ class YfB10Collector:
 
         from gpiozero import DigitalInputDevice
 
-        input_device = DigitalInputDevice(self.config.gpio_pin, pull_up=None)
+        input_device = DigitalInputDevice(self.config.gpio_pin, pull_up=None, active_state=True)
         input_device.when_activated = self._record_pulse
         self._input_device = input_device
         self._last_read_time = self._clock()
