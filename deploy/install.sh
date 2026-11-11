@@ -6,7 +6,7 @@ CONFIG_DIR=/etc/energy-monitor-feeds
 SERVICE_USER=energy-feed
 SERVICE_GROUP=energy-feed
 UNIT_NAME=energy-feed@.service
-COLLECTORS='weather_api refoss_em06 ds18b20 yf_b10'
+COLLECTORS='weather_api refoss_em06 ds18b20 yf_b10 enedis_conso'
 
 fail() {
     printf 'Error: %s\n' "$*" >&2

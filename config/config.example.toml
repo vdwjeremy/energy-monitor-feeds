@@ -24,6 +24,19 @@ key = "temperature_c"
 interval_seconds = 300
 request_timeout_seconds = 15
 
+# Enable after obtaining a personal token from https://conso.boris.sh/.
+# [collectors.enedis_conso]
+# point_id = "12345678901234"
+# token_env = "CONSO_API_TOKEN"
+# emoncms_url = "https://emoncms.example"
+# feed_id = 123
+# emoncms_api_key_env = "EMONCMS_WRITE_API_KEY"
+# node = "enedis_linky"
+# key = "consumption_wh"
+# interval_seconds = 86400
+# lookback_days = 3
+# request_timeout_seconds = 20
+
 [collectors.ds18b20]
 devices_path = "/sys/bus/w1/devices"
 node = "ds18b20"

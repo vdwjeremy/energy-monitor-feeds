@@ -60,12 +60,27 @@ class YfB10Config:
 
 
 @dataclass(frozen=True)
+class EnedisConsoConfig:
+    point_id: str
+    token_env: str
+    emoncms_url: str
+    feed_id: int
+    emoncms_api_key_env: str
+    node: str
+    key: str
+    interval_seconds: float
+    lookback_days: int
+    request_timeout_seconds: float
+
+
+@dataclass(frozen=True)
 class AppConfig:
     mqtt: MqttConfig
     weather_api: WeatherConfig
     refoss_em06: Optional[RefossEm06Config] = None
     ds18b20: Optional[Ds18b20Config] = None
     yf_b10: Optional[YfB10Config] = None
+    enedis_conso: Optional[EnedisConsoConfig] = None
 
 
 def _section(data: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -139,6 +154,36 @@ def _yf_b10_config(section: Dict[str, Any]) -> YfB10Config:
     )
 
 
+def _enedis_conso_config(section: Dict[str, Any]) -> EnedisConsoConfig:
+    point_id = _non_empty_string(section, "point_id")
+    if len(point_id) != 14 or not point_id.isdigit():
+        raise ValueError("collectors.enedis_conso.point_id must contain 14 digits")
+
+    emoncms_url = _non_empty_string(section, "emoncms_url").rstrip("/")
+    if not emoncms_url.startswith(("http://", "https://")):
+        raise ValueError("collectors.enedis_conso.emoncms_url must be an HTTP or HTTPS URL")
+    feed_id = section.get("feed_id")
+    if isinstance(feed_id, bool) or not isinstance(feed_id, int) or feed_id <= 0:
+        raise ValueError("collectors.enedis_conso.feed_id must be a positive integer")
+
+    lookback_days = section.get("lookback_days", 3)
+    if isinstance(lookback_days, bool) or not isinstance(lookback_days, int) or not 1 <= lookback_days <= 30:
+        raise ValueError("collectors.enedis_conso.lookback_days must be an integer from 1 to 30")
+
+    return EnedisConsoConfig(
+        point_id=point_id,
+        token_env=_non_empty_string(section, "token_env"),
+        emoncms_url=emoncms_url,
+        feed_id=feed_id,
+        emoncms_api_key_env=_non_empty_string(section, "emoncms_api_key_env"),
+        node=_non_empty_string(section, "node"),
+        key=_non_empty_string(section, "key"),
+        interval_seconds=_positive_number(section, "interval_seconds"),
+        lookback_days=lookback_days,
+        request_timeout_seconds=_positive_number(section, "request_timeout_seconds"),
+    )
+
+
 def load_config(path: Path) -> AppConfig:
     """Read TOML settings and validate values needed by the weather daemon."""
     with Path(path).open("rb") as config_file:
@@ -156,6 +201,9 @@ def load_config(path: Path) -> AppConfig:
     yf_b10_data = collectors_data.get("yf_b10")
     if yf_b10_data is not None and not isinstance(yf_b10_data, dict):
         raise ValueError("Missing or invalid configuration section: [collectors.yf_b10]")
+    enedis_conso_data = collectors_data.get("enedis_conso")
+    if enedis_conso_data is not None and not isinstance(enedis_conso_data, dict):
+        raise ValueError("Missing or invalid configuration section: [collectors.enedis_conso]")
 
     host = mqtt_data.get("host")
     if not isinstance(host, str) or not host.strip():
@@ -211,6 +259,9 @@ def load_config(path: Path) -> AppConfig:
         ),
         weather_api=weather_config,
         refoss_em06=_refoss_em06_config(refoss_data) if refoss_data is not None else None,
-        ds18b20=_ds18b20_config(ds18b20_data) if ds18b20_data is not None else None,
+            ds18b20=_ds18b20_config(ds18b20_data) if ds18b20_data is not None else None,
         yf_b10=_yf_b10_config(yf_b10_data) if yf_b10_data is not None else None,
+        enedis_conso=(
+            _enedis_conso_config(enedis_conso_data) if enedis_conso_data is not None else None
+        ),
     )

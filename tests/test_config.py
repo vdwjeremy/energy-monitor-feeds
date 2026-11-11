@@ -114,6 +114,47 @@ def test_load_config_reads_optional_yf_b10_settings(tmp_path: Path) -> None:
     assert config.yf_b10.node == "water_flow"
 
 
+def test_load_config_reads_optional_enedis_conso_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[collectors.enedis_conso]\npoint_id = "12345678901234"\n'
+        + 'token_env = "CONSO_API_TOKEN"\nemoncms_url = "https://emoncms.example"\n'
+        + 'feed_id = 42\nemoncms_api_key_env = "EMONCMS_API_KEY"\n'
+        + 'node = "enedis_linky"\nkey = "consumption_wh"\n'
+        + "interval_seconds = 86400\nlookback_days = 4\nrequest_timeout_seconds = 20\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.enedis_conso is not None
+    assert config.enedis_conso.point_id == "12345678901234"
+    assert config.enedis_conso.token_env == "CONSO_API_TOKEN"
+    assert config.enedis_conso.feed_id == 42
+    assert config.enedis_conso.emoncms_api_key_env == "EMONCMS_API_KEY"
+    assert config.enedis_conso.lookback_days == 4
+
+
+@pytest.mark.parametrize("point_id", ['"123"', '"1234567890123x"'])
+def test_load_config_rejects_invalid_enedis_point_id(tmp_path: Path, point_id: str) -> None:
+    config_path = tmp_path / "config.toml"
+    write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + "\n[collectors.enedis_conso]\npoint_id = {}\n".format(point_id)
+        + 'token_env = "CONSO_API_TOKEN"\nemoncms_url = "https://emoncms.example"\n'
+        + 'feed_id = 42\nemoncms_api_key_env = "EMONCMS_API_KEY"\n'
+        + 'node = "enedis_linky"\nkey = "consumption_wh"\n'
+        + "interval_seconds = 86400\nrequest_timeout_seconds = 20\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="point_id"):
+        load_config(config_path)
+
+
 @pytest.mark.parametrize("gpio_value", ["-1", "28", "true", '"16"'])
 def test_load_config_rejects_invalid_yf_b10_gpio_pin(tmp_path: Path, gpio_value: str) -> None:
     config_path = tmp_path / "config.toml"

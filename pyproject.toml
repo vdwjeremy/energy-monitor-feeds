@@ -25,7 +25,7 @@ energy-feed = "cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["cli", "config", "logging_config", "models", "mqtt"]
+py-modules = ["cli", "config", "emoncms", "logging_config", "models", "mqtt"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

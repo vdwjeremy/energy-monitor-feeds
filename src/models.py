@@ -3,7 +3,7 @@
 import math
 import re
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
 
 Number = Union[int, float]
@@ -15,6 +15,7 @@ class Measurement:
     node: str
     key: str
     value: Number
+    timestamp: Optional[str] = None
 
     def __post_init__(self) -> None:
         for label, segment in (("node", self.node), ("key", self.key)):
@@ -24,6 +25,8 @@ class Measurement:
             raise ValueError("measurement value must be numeric")
         if not math.isfinite(self.value):
             raise ValueError("measurement value must be finite")
+        if self.timestamp is not None and (not isinstance(self.timestamp, str) or not self.timestamp.strip()):
+            raise ValueError("measurement timestamp must be a non-empty string")
 
     def topic(self, basetopic: str = "emon") -> str:
         if not _TOPIC_SEGMENT.fullmatch(basetopic):

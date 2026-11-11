@@ -2,9 +2,9 @@
 
 ## Objectif
 
-Ce dépôt héberge des démons Python qui collectent des mesures depuis des API web et des capteurs locaux, puis les publient sur le broker MQTT consommé par OpenEnergyMonitor (EmonCMS). La cible est un Raspberry Pi 3 sous Linux : les processus doivent rester légers, redémarrer proprement après une panne et fonctionner sans privilèges élevés.
+Ce dépôt héberge des démons Python qui collectent des mesures depuis des API web et des capteurs locaux, puis les envoient à OpenEnergyMonitor (EmonCMS) via MQTT ou son API HTTP. La cible est un Raspberry Pi 3 sous Linux : les processus doivent rester légers, redémarrer proprement après une panne et fonctionner sans privilèges élevés.
 
-Les collecteurs implémentés interrogent Open-Meteo pour la température actuelle à Opio, France, et lisent les mesures du Refoss EM06 sur le réseau local via `refoss_ha`. Les autres collecteurs pourront être ajoutés sans modifier le cycle MQTT commun.
+Les collecteurs interrogent Open-Meteo pour la température actuelle à Opio, France, lisent les mesures du Refoss EM06 sur le réseau local via `refoss_ha`, et récupèrent la courbe de consommation horaire Linky via Conso API. Les autres collecteurs pourront être ajoutés sans modifier le cycle MQTT commun.
 
 ## Décisions structurantes
 
@@ -54,7 +54,9 @@ Le collecteur `ds18b20` lit les fichiers `temperature` des répertoires `28-*` d
 
 Le collecteur `yf_b10` compte les impulsions du débitmètre sur une entrée GPIO configurable (BCM 16 par défaut). Il publie séparément la fréquence en Hz et le débit en L/min estimé depuis $Q=(F+4)/8$, avec la tolérance nominale de ±5 % du capteur. La fenêtre de comptage est de 10 secondes par défaut. Il utilise `gpiozero` et son compte système doit avoir accès au GPIO.
 
-Les collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api`, `energy-feed refoss_em06`, `energy-feed ds18b20` ou `energy-feed yf_b10`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
+Le collecteur `enedis_conso` appelle une fois par jour `courbe_de_charge_consommation` de Conso API, avec une fenêtre de reprise de trois jours par défaut pour gérer le délai de livraison Enedis. Il convertit les valeurs Wh ou kWh en Wh et les insère directement dans un feed existant via `feed/insert.json`, avec le timestamp source converti en secondes Unix. Le token Conso API et la clé EmonCMS Read & Write sont lus depuis des variables d'environnement; ce collector ne passe pas par MQTT.
+
+Les collectors se configurent dans `config/config.toml`, se lancent séparément (`energy-feed weather_api`, `energy-feed refoss_em06`, `energy-feed ds18b20`, `energy-feed yf_b10` ou `energy-feed enedis_conso`) et disposent chacun d'une unité `systemd` instanciée depuis `deploy/systemd/energy-feed@.service`. Les commandes complètes d'installation, de configuration et de mise à jour sont documentées dans [README.md](README.md#déploiement-sur-raspberry-pi).
 
 ## Flux de données
 
@@ -88,7 +90,7 @@ Payload: 420
 
 EmonCMS utilise `emon` comme `basetopic` par défaut. Il interprète l'exemple comme le nœud `refoss_em06` et l'entrée `channel_1_power`. Pour une API web, choisir un nom de nœud stable pour la source ou la ressource (par exemple `openweather_home`) et une clé descriptive (par exemple `temperature_c`). Publier une valeur numérique par message et documenter les unités.
 
-Le service `emoncms_mqtt` s'abonne à `emon/#` et crée/met à jour les Inputs à partir de ces topics. Dans EmonCMS, ajouter ensuite un processus d'enregistrement vers un feed pour chaque Input à conserver. Utiliser des noms stables en minuscules, sans espaces, et éviter de mélanger des unités dans une même mesure.
+Le service `emoncms_mqtt` s'abonne à `emon/#` et crée/met à jour les Inputs à partir de ces topics. Dans EmonCMS, ajouter ensuite un processus d'enregistrement vers un feed pour chaque Input à conserver. Enedis contourne le chemin MQTT et écrit dans un feed existant avec l'API feed; configurer son ID dans le TOML. Utiliser des noms stables en minuscules, sans espaces, et éviter de mélanger des unités dans une même mesure.
 
 La politique QoS doit être configurable. QoS 0 minimise le trafic; QoS 1 améliore la livraison mais autorise les doublons. Pour des mesures périodiques, le choix doit tenir compte du traitement EmonCMS et de la tolérance aux doublons. Ne pas retenir les messages (retain) par défaut, sauf besoin explicite d'exposer la dernière valeur connue.
 
@@ -106,7 +108,7 @@ La politique QoS doit être configurable. QoS 0 minimise le trafic; QoS 1 améli
 - Utiliser `systemd` avec `Restart=on-failure`, une temporisation de redémarrage et un utilisateur dédié.
 - Continuer les cycles après une erreur transitoire, avec délai progressif en cas de panne persistante. Une mesure invalide est rejetée et signalée, pas publiée comme zéro.
 - La première version peut garder les mesures en mémoire seulement. Une file persistante SQLite ne se justifie que si la perte des mesures pendant une indisponibilité MQTT n'est pas acceptable.
-- Synchroniser l'horloge du Raspberry Pi via NTP. Publier des valeurs numériques avec unités convenues; vérifier le comportement temporel souhaité dans EmonCMS avant d'ajouter un timestamp dans le payload.
+- Synchroniser l'horloge du Raspberry Pi via NTP. Les points Enedis conservent leur timestamp source; les autres collectors utilisent l'heure de réception MQTT.
 
 ## Dépendances et compatibilité
 

@@ -1,6 +1,6 @@
 # Energy Monitor Feeds
 
-Démons Python destinés à Linux et au Raspberry Pi 3. Ils récupèrent des mesures depuis des services web ou des capteurs locaux et les publient via MQTT pour OpenEnergyMonitor / EmonCMS. Le premier collecteur interroge Open-Meteo pour obtenir la température actuelle à Opio, France.
+Démons Python destinés à Linux et au Raspberry Pi 3. Ils récupèrent des mesures depuis des services web ou des capteurs locaux et les envoient à OpenEnergyMonitor / EmonCMS via MQTT ou son API HTTP. Le premier collecteur interroge Open-Meteo pour obtenir la température actuelle à Opio, France.
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour les composants prévus, le contrat MQTT et les choix de déploiement.
 
@@ -47,6 +47,32 @@ Lancer le collector :
 ```bash
 energy-feed refoss_em06 --config config/config.toml
 ```
+
+### Consommation Linky horaire `enedis_conso`
+
+Le collector appelle la route `courbe_de_charge_consommation` de [Conso API](https://conso.boris.sh/documentation), puis insère chaque point directement dans un feed EmonCMS via `feed/insert.json`. Les données Enedis arrivent une fois par jour et peuvent avoir un à deux jours de retard; une collecte quotidienne est donc recommandée. Par défaut, il récupère les trois derniers jours pour inclure les données livrées en retard. Configurez `lookback_days` entre 1 et 30 si nécessaire.
+
+Activez **« Enregistrement de la consommation horaire »** et **« Collecte de ma consommation horaire »** dans votre espace Enedis, puis obtenez un token personnel via Conso API. Dans `config/config.toml`, décommentez et renseignez `[collectors.enedis_conso]` dans `config/config.example.toml`, en particulier l'URL de votre instance EmonCMS et l'ID du feed existant. Placez les deux clés d'écriture dans `/etc/energy-monitor-feeds/energy-feed.env`, sans les inscrire dans le TOML :
+
+```text
+CONSO_API_TOKEN=votre_token_personnel
+EMONCMS_WRITE_API_KEY=votre_cle_api_ecriture
+```
+
+Le point de livraison (`point_id`) comporte 14 chiffres. `feed_id` est l'identifiant du feed temporel EmonCMS à alimenter. La clé `emoncms_api_key_env` indique le nom de la variable d'environnement contenant une API key **Read & Write**. Le collector normalise les valeurs en Wh et envoie chaque point avec son horodatage source (converti en secondes Unix) à `feed/insert.json` :
+
+```text
+GET https://emoncms.example/feed/insert.json
+id=123&time=1794092400&value=120.0
+```
+
+Lancer manuellement le collector avec :
+
+```bash
+CONSO_API_TOKEN=votre_token_personnel EMONCMS_WRITE_API_KEY=votre_cle_api_ecriture energy-feed enedis_conso --config config/config.toml
+```
+
+Pour un essai local, fournir les deux clés dans l'environnement du processus. En production, l'unité systemd charge le fichier `energy-feed.env` protégé automatiquement. Le collector Enedis écrit directement dans EmonCMS et n'utilise pas le broker MQTT. Activer ensuite le service avec `sudo sh /opt/energy-monitor-feeds/deploy/install.sh enedis_conso`.
 
 ### Températures DS18B20 `ds18b20`
 
@@ -97,11 +123,11 @@ Respecter le brochage et la tension d'alimentation du modèle exact du débitmè
 
 ### Configuration et topics MQTT
 
-Les collectors utilisent le préfixe `basetopic` (par défaut `emon`) et le même format EmonCMS `emon/<node>/<key>`. Leurs nœuds par défaut sont `weather_opio`, `refoss_em06`, `ds18b20` et `yf_b10`. Les topics Refoss incluent le canal, ceux du DS18B20 l'adresse 1-Wire; le YF-B10 sépare fréquence et débit. Chaque payload est numérique. Configurer l'hôte et le port du broker dans `[mqtt]`; les identifiants sont fournis par variables d'environnement, jamais inscrits dans le TOML.
+Les collectors qui publient en MQTT utilisent le préfixe `basetopic` (par défaut `emon`) et des payloads numériques. Enedis écrit directement les points horodatés dans le feed EmonCMS configuré via l'API HTTP. Les identifiants MQTT, le token Conso API et la clé API EmonCMS sont fournis par variables d'environnement, jamais inscrits dans le TOML.
 
 ## Installation locale
 
-Prérequis : Python 3.9 ou plus récent, `pip` et un broker MQTT accessible. Refoss demande Python 3.11 ou plus récent. Depuis la racine du dépôt :
+Prérequis : Python 3.9 ou plus récent et `pip`. Un broker MQTT accessible est nécessaire aux collectors MQTT; Enedis nécessite l'accès HTTP à EmonCMS. Refoss demande Python 3.11 ou plus récent. Depuis la racine du dépôt :
 
 ```bash
 python3 -m venv .venv
@@ -118,7 +144,7 @@ Chaque collector tourne dans son propre processus. Exemple :
 energy-feed weather_api --config config/config.toml
 ```
 
-Remplacer `weather_api` par `refoss_em06`, `ds18b20` ou `yf_b10` pour lancer un autre collector, dans un autre terminal si nécessaire. Pour les tests, installer plutôt `python -m pip install -e '.[dev]'`. Les erreurs de collecte ou de publication sont journalisées; la boucle continue au cycle suivant. Arrêter avec `Ctrl+C`.
+Remplacer `weather_api` par `refoss_em06`, `ds18b20`, `yf_b10` ou `enedis_conso` pour lancer un autre collector, dans un autre terminal si nécessaire. Pour Enedis, exporter les variables définies par `token_env` et `emoncms_api_key_env`; renseigner aussi `emoncms_url` et `feed_id`. Pour les tests, installer plutôt `python -m pip install -e '.[dev]'`. Les erreurs de collecte ou d'écriture sont journalisées; la boucle continue au cycle suivant. Arrêter avec `Ctrl+C`.
 
 ## Tester la réception MQTT
 
@@ -137,7 +163,7 @@ Si rien n'arrive, vérifier l'accessibilité réseau du broker, ses identifiants
 
 ## Déploiement sur Raspberry Pi
 
-Prérequis : Raspberry Pi OS, Python 3.9 ou plus récent (3.11+ pour Refoss), un broker MQTT accessible et un dépôt cloné dans `/opt/energy-monitor-feeds`. Installer les outils nécessaires et cloner le dépôt :
+Prérequis : Raspberry Pi OS, Python 3.9 ou plus récent (3.11+ pour Refoss), accès au broker pour les collectors MQTT ou à EmonCMS pour Enedis, et un dépôt cloné dans `/opt/energy-monitor-feeds`. Installer les outils nécessaires et cloner le dépôt :
 
 ```bash
 sudo apt update
@@ -156,11 +182,11 @@ Modifier `/etc/energy-monitor-feeds/config.toml` avec `sudoedit` pour renseigner
 Après avoir configuré et vérifié le matériel, relancer l'installateur avec les seuls collectors à activer. Exemple :
 
 ```bash
-sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10 enedis_conso
 sudo journalctl -u energy-feed@weather_api -f
 ```
 
-Les noms acceptés sont `weather_api`, `refoss_em06`, `ds18b20` et `yf_b10`; seuls les services nommés sont activés et démarrés. Avant cela, activer 1-Wire pour le DS18B20, vérifier l'accès réseau au Refoss, ou ajouter manuellement `energy-feed` au groupe `gpio` pour le YF-B10. Les services tournent sous le compte `energy-feed`, redémarrent après une erreur et journalisent dans `journald`.
+Les noms acceptés sont `weather_api`, `refoss_em06`, `ds18b20`, `yf_b10` et `enedis_conso`; seuls les services nommés sont activés et démarrés. Avant cela, activer 1-Wire pour le DS18B20, vérifier l'accès réseau au Refoss, ajouter `energy-feed` au groupe `gpio` pour le YF-B10, ou configurer le PRM, le feed et les deux clés d'environnement pour Enedis. Les services tournent sous le compte `energy-feed`, redémarrent après une erreur et journalisent dans `journald`.
 
 ## Mise à jour sur Raspberry Pi
 
@@ -168,15 +194,15 @@ La configuration et les secrets restent dans `/etc/energy-monitor-feeds`; la mis
 
 ```bash
 sudo git -C /opt/energy-monitor-feeds pull --ff-only
-sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10
-sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20 energy-feed@yf_b10
+sudo sh /opt/energy-monitor-feeds/deploy/install.sh weather_api ds18b20 refoss_em06 yf_b10 enedis_conso
+sudo systemctl try-restart energy-feed@weather_api energy-feed@refoss_em06 energy-feed@ds18b20 energy-feed@yf_b10 energy-feed@enedis_conso
 ```
 
 `try-restart` redémarre uniquement les collectors déjà actifs. Retirer de la commande les unités que l'on ne souhaite pas mettre à jour/redémarrer. Vérifier ensuite leur état avec `systemctl status energy-feed@yf_b10` (ou remplacer par un autre nom de collector), et consulter les journaux avec `journalctl -u <unite> -f`. L'option `--ff-only` évite de fusionner automatiquement des modifications locales; en cas de refus, examiner les changements du dépôt avant de poursuivre.
 
 ## Ajouter un collecteur
 
-Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api`, `refoss_em06`, `ds18b20` et `yf_b10` sont exécutables.
+Un collecteur doit rester limité à une source et à la conversion de ses données en mesures numériques documentées. Il doit définir des timeouts, traiter les erreurs transitoires sans arrêter définitivement le processus et laisser la connexion MQTT ainsi que les logs au module commun. Ajouter des tests unitaires pour les conversions et les payloads, sans dépendre du réseau ou du matériel réel. `local_sensors.py` est un squelette en attente du choix de matériel; `weather_api`, `refoss_em06`, `ds18b20`, `yf_b10` et `enedis_conso` sont exécutables.
 
 ## Sécurité
 

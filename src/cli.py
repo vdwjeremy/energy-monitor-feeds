@@ -14,6 +14,8 @@ from collectors.weather_api import WeatherApiCollector
 from collectors.refoss_em06 import RefossEm06Collector
 from collectors.ds18b20 import Ds18b20Collector
 from collectors.yf_b10 import YfB10Collector
+from collectors.enedis_conso import EnedisConsoCollector
+from emoncms import EmoncmsFeedClient
 from config import load_config
 from logging_config import configure_logging
 from mqtt import MqttPublisher
@@ -44,6 +46,41 @@ def _run_weather_api(config_path: Path, stop: threading.Event) -> None:
 
             remaining = config.weather_api.interval_seconds - (time.monotonic() - cycle_started)
             stop.wait(max(0.0, remaining))
+
+
+def _run_enedis_conso(config_path: Path, stop: threading.Event) -> None:
+    config = load_config(config_path)
+    if config.enedis_conso is None:
+        raise ValueError("Missing [collectors.enedis_conso] configuration section")
+
+    collector = EnedisConsoCollector(config.enedis_conso)
+    emoncms = EmoncmsFeedClient(config.enedis_conso)
+    LOGGER.info(
+        "Starting Enedis hourly consumption collector for PRM %s and EmonCMS feed %s",
+        config.enedis_conso.point_id,
+        config.enedis_conso.feed_id,
+    )
+    while not stop.is_set():
+        cycle_started = time.monotonic()
+        try:
+            measurements = collector.collect()
+            for measurement in measurements:
+                try:
+                    emoncms.insert(measurement)
+                    LOGGER.info(
+                        "Inserted Enedis %s=%s at %s into EmonCMS feed %s",
+                        measurement.key,
+                        measurement.payload,
+                        measurement.timestamp,
+                        config.enedis_conso.feed_id,
+                    )
+                except Exception:
+                    LOGGER.exception("Failed to insert Enedis point at %s", measurement.timestamp)
+        except Exception:
+            LOGGER.exception("Enedis consumption collection failed")
+
+        remaining = config.enedis_conso.interval_seconds - (time.monotonic() - cycle_started)
+        stop.wait(max(0.0, remaining))
 
 
 def _run_ds18b20(config_path: Path, stop: threading.Event) -> None:
@@ -155,7 +192,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Collect and publish energy-monitor measurements")
     parser.add_argument(
         "collector",
-        choices=("weather_api", "refoss_em06", "ds18b20", "yf_b10"),
+        choices=("weather_api", "refoss_em06", "ds18b20", "yf_b10", "enedis_conso"),
         help="collector to run",
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="path to TOML config")
@@ -168,6 +205,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.collector == "weather_api":
             _run_weather_api(args.config, stop)
+        elif args.collector == "enedis_conso":
+            _run_enedis_conso(args.config, stop)
         elif args.collector == "refoss_em06":
             asyncio.run(_run_refoss_em06(args.config, stop))
         elif args.collector == "ds18b20":

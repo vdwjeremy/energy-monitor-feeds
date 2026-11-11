@@ -1,5 +1,6 @@
 """MQTT publication for EmonCMS topics."""
 
+import json
 import logging
 import os
 import threading
@@ -50,8 +51,16 @@ class MqttPublisher:
     def publish(self, measurement: Measurement) -> None:
         if not self._connected.wait(self.config.connect_timeout_seconds):
             raise ConnectionError("MQTT broker is not connected")
-        topic = measurement.topic(self.config.basetopic)
-        result = self._client.publish(topic, measurement.payload, qos=self.config.qos, retain=False)
+        if measurement.timestamp is None:
+            topic = measurement.topic(self.config.basetopic)
+            payload = measurement.payload
+        else:
+            topic = "{}/{}".format(self.config.basetopic, measurement.node)
+            payload = json.dumps(
+                {measurement.key: measurement.value, "time": measurement.timestamp},
+                separators=(",", ":"),
+            )
+        result = self._client.publish(topic, payload, qos=self.config.qos, retain=False)
         if result.rc != mqtt_client.MQTT_ERR_SUCCESS:
             raise ConnectionError("MQTT publish failed with code {}".format(result.rc))
         result.wait_for_publish(timeout=self.config.publish_timeout_seconds)
